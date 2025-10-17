@@ -1,53 +1,29 @@
 <?php
-require_once 'vendor/autoload.php';
+// Database connection
+$dbHost = $_ENV['DB_HOST'] ?? 'localhost';
+$dbUser = $_ENV['DB_USER'] ?? 'root';
+$dbPass = $_ENV['DB_PASS'] ?? '';
+$dbName = $_ENV['DB_NAME'] ?? 'php_row';
 
-// .env file uplode
-$dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
-$dotenv->load();
-
-// .env data base 
-$DB_HOST = $_ENV['DB_HOST'];
-$DB_USER = $_ENV['DB_USER'];
-$DB_PASS = $_ENV['DB_PASS'];
-$DB_NAME = $_ENV['DB_NAME'];
-
-
-
-$conn = mysqli_connect($DB_HOST, $DB_USER, $DB_PASS);
-
+$conn = mysqli_connect($dbHost, $dbUser, $dbPass, $dbName);
 if (!$conn) {
     die("Connection failed: " . mysqli_connect_error());
 }
 
-$sql = "CREATE DATABASE IF NOT EXISTS $DB_NAME";
-if ($conn->query($sql)=== TRUE) {
-    echo " database create successfully.<br>";
-} else {
-    die(" Error creating database: " . mysqli_error($conn));
-}
+$errors = [];
 
-$conn = mysqli_connect($DB_HOST, $DB_USER, $DB_PASS, $DB_NAME);
-if (!$conn) {
-    die("Connection to '$DB_NAME' failed: " . mysqli_connect_error());
-}
+if ($_SERVER["REQUEST_METHOD"] == "POST") {
+    // Get form data and trim spaces
+    $name = trim($_POST['name']);
+    $email = trim($_POST['email']);
+    $password = trim($_POST['password']);
+    $confirm = trim($_POST['confirm']);
+    $phone = trim($_POST["phone"]);
+    $address = trim($_POST["address"]);
+    
 
-
-
-$table2 = "CREATE TABLE IF NOT EXISTS table2_files (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    filename VARCHAR(100) NOT NULL,
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)";
-if ($conn->query($table2)===TRUE) {
-    echo " table create successfully .<br>";
-} else {
-    echo " Error creating table 'table2_files': " . mysqli_error($conn) . "<br>";
-}
-
-
-
-if($_SERVER["REQUEST_METHOD"] == "POST"){
-     if (isset($_FILES['file'])) {
+    // Check if file was uploaded
+    if (isset($_FILES['file'])) {
         $file_name = $_FILES['file']['name'];
         $temp_name = $_FILES['file']['tmp_name'];
         $file_size = $_FILES['file']['size'];
@@ -57,9 +33,33 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         $file_size = 0;
     }
 
-}
+    // ====== Validation ======
+    if (empty($name)) {
+        $errors[] = "Name is required.";
+    }
 
- if (empty($file_name)) {
+    if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+        $errors[] = "Valid email is required.";
+    }
+
+    if (strlen($password) < 6) {
+        $errors[] = "Password must be at least 6 characters.";
+    }
+
+    if ($password !== $confirm) {
+        $errors[] = "Passwords do not match.";
+    }
+
+    if (!preg_match('/^[0-9]{10,15}$/', $phone)) {
+        $errors[] = "Valid phone number is required (10-15 digits).";
+    }
+
+    if (empty($address)) {
+        $errors[] = "Address is required.";
+    }
+
+    // Image validation
+    if (empty($file_name)) {
         $errors[] = "Image is required.";
     } else {
         $file_ext = strtolower(pathinfo($file_name, PATHINFO_EXTENSION));
@@ -86,18 +86,26 @@ if($_SERVER["REQUEST_METHOD"] == "POST"){
         $target_file = $target_dir . basename($new_file_name);
         if (!move_uploaded_file($temp_name, $target_file)) {
             $errors[] = "Failed to upload image.";
+        } else {
+            $hashed_password = password_hash($password, PASSWORD_DEFAULT);
+
+            $sql = "INSERT INTO users (name, email, password, phone, address, image) 
+        VALUES ('$name', '$email', '$hashed_password', '$phone', '$address', '$new_file_name')";
+
+            if (mysqli_query($conn, $sql)) {
+                echo "<p style='color:green;'> User registered successfully!</p>";
+            } else {
+                echo "<p style='color:red;'> Error: " . mysqli_error($conn) . "</p>";
+            }
         }
     }
 
-$insertQ = "INSERT INTO table2_files(filename) VALUES ('$new_file_name')";
-
-if($conn->query($insertQ)===TRUE){
-    echo "upload successfully <br>";
-
-}else{
-
-    echo "file upload error " .$conn->error;
+    // Display errors
+    if (!empty($errors)) {
+        foreach ($errors as $error) {
+            echo "<p style='color:red;'>$error</p>";
+        }
+    }
 }
 
 mysqli_close($conn);
-?>
